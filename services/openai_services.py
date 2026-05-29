@@ -10,7 +10,7 @@ client = OpenAI(
 )
 
 
-def classify_investment_urls(filtered_links):
+def find_content_hubs(filtered_links):
 
     response = client.chat.completions.create(
         model="gpt-5.4",
@@ -19,43 +19,45 @@ def classify_investment_urls(filtered_links):
             {
                 "role": "system",
                 "content": """
-You are filtering URLs from a venture capital website.
+You are analyzing URLs from a venture capital website.
 
-Keep URLs that are likely:
-- portfolio company pages
-- startup spotlight pages
-- investment case studies
-- funding announcements
-- investment thesis articles
+Your task:
+Identify URLs that are likely content hubs containing:
+- blogs
+- articles
+- insights
+- news
+- perspectives
 - founder stories
-- investment insight blogs
+- spotlight pages
+- investment writeups
+- newsroom content
 
-Prefer:
-- deep content pages
-- startup/company-specific pages
+Return ONLY the TOP 10 most relevant URLs.
 
-Reject URLs that are clearly:
-- legal pages
-- privacy pages
-- admin pages
-- login/signup pages
-- careers/jobs pages
-- podcast pages
-- team/about/contact pages
+Prioritize:
+- article index pages
+- insights sections
+- writing sections
+- blog archives
+- newsrooms
+- spotlight/article collections
 
-Avoid keeping:
-- generic homepage
-- generic about/approach pages
-unless they contain unique investment insights.
-
-Be generous with potentially useful investment content.
+Do NOT return:
+- homepage
+- company profile pages
+- portfolio company pages
+- team pages
+- contact pages
+- legal/privacy pages
+- login/admin pages
 
 Return JSON in this exact format:
 
 {
   "urls": [
-    "https://example.com/page1",
-    "https://example.com/page2"
+    "https://example.com/blog",
+    "https://example.com/insights"
   ]
 }
 """
@@ -63,6 +65,123 @@ Return JSON in this exact format:
             {
                 "role": "user",
                 "content": json.dumps(filtered_links)
+            }
+        ]
+    )
+
+    return response.choices[0].message.content
+
+def find_article_urls(scraped_content):
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": """
+You are analyzing scraped VC website content.
+
+Your task:
+Extract the TOP 10 article/blog/news/spotlight URLs
+most likely to contain:
+
+- startup investment information
+- funding announcements
+- investment rationale
+- founder stories
+- investment theses
+- portfolio insights
+
+Prioritize:
+- individual article URLs
+- blog post URLs
+- insight article URLs
+- spotlight pages
+- funding news pages
+
+Do NOT return:
+- category pages
+- archive pages
+- homepage URLs
+- pagination URLs
+- tag pages
+- author pages
+
+Return JSON in this exact format:
+
+{
+  "urls": [
+    "https://example.com/article-1",
+    "https://example.com/article-2"
+  ]
+}
+"""
+            },
+            {
+                "role": "user",
+                "content": scraped_content
+            }
+        ]
+    )
+
+    return response.choices[0].message.content
+
+def filter_top_articles(article_urls):
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": """
+You are selecting the BEST investment-related articles from a VC website.
+
+Your task:
+Return ONLY the TOP 10 URLs most likely to contain:
+
+- startup investment insights
+- funding announcements
+- investment rationale
+- founder stories
+- portfolio deep dives
+- sector theses
+- investor commentary
+
+Prioritize URLs containing:
+- funding
+- raises
+- investment
+- insight
+- spotlight
+- seed
+- series-a
+- startup
+- portfolio
+
+Avoid:
+- category pages
+- media archives
+- generic hubs
+- pagination pages
+- videos
+- podcasts
+- author pages
+
+Return JSON in this exact format:
+
+{
+  "urls": [
+    "https://example.com/article1",
+    "https://example.com/article2"
+  ]
+}
+"""
+            },
+            {
+                "role": "user",
+                "content": json.dumps(article_urls)
             }
         ]
     )
@@ -83,21 +202,22 @@ You are extracting structured investment insights from VC website content.
 Return JSON in this exact format:
 
 {
-  "company_name": "",
+  "source_url": "",
+  "company_invested_in": "",
+  "stage": "",
   "sector": "",
-  "business_summary": "",
-  "why_invested": "",
-  "market_gap": "",
-  "growth_metrics": "",
-  "investment_thesis": "",
-  "key_challenges": "",
-  "category_creation_insight": ""
+  "amount_invested": "",
+  "co_investors": [],
+  "investment_date": "",
+  "insights": []
 }
 
 Rules:
-- Keep answers concise but informative
-- Extract only information clearly present
-- Do not hallucinate
+- insights should contain multiple short bullet-style investment insights
+- Extract only explicitly available information
+- Do not hallucinate missing funding stages or amounts
+- Use empty string if unavailable
+- Use empty array if unavailable
 - Return valid JSON only
 """
             },
@@ -123,6 +243,11 @@ def extract_all_insights(scraped_content):
             result = extract_investment_insight(
                 page["content"]
             )
+
+            result = json.loads(result)
+
+            if not result["company_invested_in"]:
+                continue
 
             insights.append(result)
 
