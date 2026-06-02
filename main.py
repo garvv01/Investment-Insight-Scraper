@@ -1,5 +1,5 @@
-from services.firecrawl_service import map_website,scrape_pages
-from services.openai_services import find_content_hubs, extract_all_insights, find_article_urls, filter_top_articles
+from services.firecrawl_service import map_website, scrape_pages
+from services.openai_services import filter_top_articles, decide_route, extract_all_insights
 from filters.url_filter import filter_urls
 import json
 import os
@@ -8,75 +8,45 @@ links = map_website(
     "https://www.titancapital.vc"
 )
 
-filtered_links = filter_urls(links)
+cleaned_links = filter_urls(links)
 
-content_hub_links = find_content_hubs(filtered_links)
+route_decision = decide_route(cleaned_links)
 
-content_hub_links = json.loads(content_hub_links)
+route_decision = json.loads(route_decision)
 
-content_hub_links = content_hub_links["urls"]
+print("\nROUTE DECISION:\n")
+print(route_decision)
 
-hub_scraped_content = scrape_pages(
-    content_hub_links
-)
+if route_decision["route"]=="route_1":
 
-all_article_urls = []
+    print("\nUSING ROUTE 1\n")
 
-for page in hub_scraped_content:
+    top_articles = filter_top_articles(cleaned_links)
 
-    article_urls = find_article_urls(
-        page["content"]
+    top_articles = json.loads(top_articles)
+
+    top_articles = top_articles["urls"]
+
+    print("\nTop investment-related URLs found:\n")
+
+    for url in top_articles:
+        print(url)
+
+    scraped_articles = scrape_pages(
+        top_articles
     )
 
-    article_urls = json.loads(article_urls)
-
-    all_article_urls.extend(
-        article_urls["urls"]
+    all_insights = extract_all_insights(
+        scraped_articles
     )
 
-all_article_urls = list(
-    set(all_article_urls)
-)
+    os.makedirs("output", exist_ok=True)
 
-filtered_article_urls = []
+    with open("output/insights.json", "w") as file:
+        json.dump(all_insights, file, indent=4)
 
-BLOCKLIST = [
-    "/category/",
-    "/tag/",
-    "/author/",
-    "/page/",
-    "/media/",
-    "/blogs",
-    "/homeblog",
-    "/news-and-insights"
-]
+    print("\nSaved insights to output/insights.json")
 
-for url in all_article_urls:
+else:
 
-    if any(blocked in url for blocked in BLOCKLIST):
-        continue
-
-    filtered_article_urls.append(url)
-
-top_articles = filter_top_articles(
-    filtered_article_urls
-)
-
-top_articles = json.loads(
-    top_articles
-)
-
-top_articles = top_articles["urls"]
-
-scraped_articles = scrape_pages(
-    top_articles
-)
-
-all_insights = extract_all_insights(
-    scraped_articles
-)
-
-os.makedirs("output", exist_ok=True)
-
-with open("output/insights.json", "w") as file:    
-    json.dump(all_insights, file, indent=4)
+    print("\nUSING ROUTE 2\n")

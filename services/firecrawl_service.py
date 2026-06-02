@@ -17,7 +17,6 @@ def map_website(url):
 
     return result.links
 
-
 def scrape_page(url):
 
     result = app.scrape(

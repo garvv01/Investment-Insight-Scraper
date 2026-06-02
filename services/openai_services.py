@@ -9,124 +9,6 @@ client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY")
 )
 
-
-def find_content_hubs(filtered_links):
-
-    response = client.chat.completions.create(
-        model="gpt-5.4",
-        response_format={"type": "json_object"},
-        messages=[
-            {
-                "role": "system",
-                "content": """
-You are analyzing URLs from a venture capital website.
-
-Your task:
-Identify URLs that are likely content hubs containing:
-- blogs
-- articles
-- insights
-- news
-- perspectives
-- founder stories
-- spotlight pages
-- investment writeups
-- newsroom content
-
-Return ONLY the TOP 10 most relevant URLs.
-
-Prioritize:
-- article index pages
-- insights sections
-- writing sections
-- blog archives
-- newsrooms
-- spotlight/article collections
-
-Do NOT return:
-- homepage
-- company profile pages
-- portfolio company pages
-- team pages
-- contact pages
-- legal/privacy pages
-- login/admin pages
-
-Return JSON in this exact format:
-
-{
-  "urls": [
-    "https://example.com/blog",
-    "https://example.com/insights"
-  ]
-}
-"""
-            },
-            {
-                "role": "user",
-                "content": json.dumps(filtered_links)
-            }
-        ]
-    )
-
-    return response.choices[0].message.content
-
-def find_article_urls(scraped_content):
-
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        response_format={"type": "json_object"},
-        messages=[
-            {
-                "role": "system",
-                "content": """
-You are analyzing scraped VC website content.
-
-Your task:
-Extract the TOP 10 article/blog/news/spotlight URLs
-most likely to contain:
-
-- startup investment information
-- funding announcements
-- investment rationale
-- founder stories
-- investment theses
-- portfolio insights
-
-Prioritize:
-- individual article URLs
-- blog post URLs
-- insight article URLs
-- spotlight pages
-- funding news pages
-
-Do NOT return:
-- category pages
-- archive pages
-- homepage URLs
-- pagination URLs
-- tag pages
-- author pages
-
-Return JSON in this exact format:
-
-{
-  "urls": [
-    "https://example.com/article-1",
-    "https://example.com/article-2"
-  ]
-}
-"""
-            },
-            {
-                "role": "user",
-                "content": scraped_content
-            }
-        ]
-    )
-
-    return response.choices[0].message.content
-
 def filter_top_articles(article_urls):
 
     response = client.chat.completions.create(
@@ -136,7 +18,7 @@ def filter_top_articles(article_urls):
             {
                 "role": "system",
                 "content": """
-You are selecting the BEST investment-related articles from a VC website.
+You are selecting the BEST investment-related URLs from a VC website.
 
 Your task:
 Return ONLY the TOP 10 URLs most likely to contain:
@@ -160,6 +42,10 @@ Prioritize URLs containing:
 - startup
 - portfolio
 
+Prioritize URLs whose:
+- title suggests funding/investment activity
+- description mentions startups, funding, investors, or rounds
+
 Avoid:
 - category pages
 - media archives
@@ -168,6 +54,16 @@ Avoid:
 - videos
 - podcasts
 - author pages
+- team/about/contact/legal pages
+
+You will receive:
+[
+  {
+    "url": "",
+    "title": "",
+    "description": ""
+  }
+]
 
 Return JSON in this exact format:
 
@@ -181,7 +77,7 @@ Return JSON in this exact format:
             },
             {
                 "role": "user",
-                "content": json.dumps(article_urls)
+                "content": str(article_urls)
             }
         ]
     )
@@ -191,13 +87,13 @@ Return JSON in this exact format:
 def extract_investment_insight(content):
 
     response = client.chat.completions.create(
-        model="gpt-5.4",
+        model="gpt-4.1-mini",
         response_format={"type": "json_object"},
         messages=[
             {
                 "role": "system",
-                "content":"""
-You are extracting structured investment insights from VC website content.
+                "content": """
+You are extracting structured investment insights from VC investment articles.
 
 Return JSON in this exact format:
 
@@ -215,7 +111,7 @@ Return JSON in this exact format:
 Rules:
 - insights should contain multiple short bullet-style investment insights
 - Extract only explicitly available information
-- Do not hallucinate missing funding stages or amounts
+- Do not hallucinate missing information
 - Use empty string if unavailable
 - Use empty array if unavailable
 - Return valid JSON only
@@ -246,6 +142,8 @@ def extract_all_insights(scraped_content):
 
             result = json.loads(result)
 
+            result["source_url"] = page["url"]
+
             if not result["company_invested_in"]:
                 continue
 
@@ -257,3 +155,57 @@ def extract_all_insights(scraped_content):
             print(e)
 
     return insights
+
+def decide_route(mapped_links):
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": """
+You are deciding which scraping route to use for a VC website.
+
+ROUTE 1:
+Use when mapped URLs already contain strong investment/article signals like:
+- funding
+- raises
+- seed
+- series-a
+- investment
+- spotlight
+- founder stories
+- startup news
+
+ROUTE 2:
+Use when mapped URLs are mostly:
+- homepage pages
+- admin pages
+- sitemap pages
+- generic portfolio pages
+- static pages
+
+Return JSON in this exact format:
+
+{
+  "route": "route_1",
+  "reason": "Mapped URLs already contain strong investment article signals."
+}
+
+OR
+
+{
+  "route": "route_2",
+  "reason": "Mapped URLs do not contain enough direct article/investment URLs."
+}
+"""
+            },
+            {
+                "role": "user",
+                "content": str(mapped_links)
+            }
+        ]
+    )
+
+    return response.choices[0].message.content
